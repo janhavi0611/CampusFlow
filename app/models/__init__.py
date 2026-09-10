@@ -1,3 +1,4 @@
+from .user import User
 from .event import Event
 from .resource import Resource
 from .resource_request import (
@@ -7,8 +8,8 @@ from .resource_request import (
     Allocation,
 )
 
-
 __all__ = [
+    "User",
     "Event",
     "Resource",
     "ResourceRequest",

@@ -1,181 +1,165 @@
-# CampusFlow â€” College Event Resource Allocation System
+# ?? College Event Resource System
 
-CampusFlow is a web application for coordinating college events and the shared resources that support them. Built with Flask, SQLAlchemy, SQLite, Jinja2, and Tailwind CSS, it helps a college manage venues and equipment such as auditoriums, laboratories, projectors, microphones, cameras, and computers without double booking.
-
-The project focuses on reliable backend validation, clear allocation decisions, and atomic database transactions rather than complex user-interface features.
+A Flask-based web application for managing college events and their resource allocations. Built with role-based access control, atomic conflict detection, and an alternative suggestion engine — all wrapped in a warm, custom design system.
 
 ---
 
-## Key Features
+## ? Features
 
-### Event management
-
-- Create, view, edit, cancel, and filter events by status or date.
-- Capture organizer, expected attendance, start/end date and time, and lifecycle status.
-- Validate required fields, positive attendance, and valid event time ranges.
-- Cancelling an event releases its active resource allocations and cancels any pending requests linked to it.
-
-### Resource management
-
-- Add and edit resources by name, type, optional capacity, and active status.
-- Activate or deactivate resources without deleting historical allocation data.
-- Exclude inactive resources from all availability and allocation decisions.
-
-### Resource requests and approval
-
-- Request one or more resource types and quantities for a selected event.
-- Require request times to fall within the event schedule.
-- Review each request as **Pending**, then approve and allocate it or reject it.
-- Cancel allocated requests to immediately release the reserved resources.
-
-### Availability, suitability, and conflicts
-
-- Search active resources available during a selected time window and optionally filter by type.
-- Validate resource type and attendance capacity before allocation.
-- Prevent overlapping allocations on the backend while permitting back-to-back bookings.
-- Suggest a suitable available alternative when a requested resource type cannot be fully allocated.
-
-### Atomic allocation
-
-Multi-resource requests use a single database transaction. The system identifies every required resource before creating any allocation. If even one requirement cannot be fulfilled, the transaction rolls back and no partial booking is created.
+| Feature | Description |
+|---|---|
+| **Role-Based Access** | Admin / Organizer roles with separate permissions |
+| **Event Management** | Create, edit, view, and track event status lifecycle |
+| **Resource Catalogue** | Manage venue, equipment, and lab resources with capacity |
+| **Resource Requests** | Organizers submit structured allocation requests per event |
+| **Atomic Allocation** | All-or-nothing approval — a partial conflict rejects the full request |
+| **Conflict Detection** | Real-time time-window overlap detection across all bookings |
+| **Alternative Suggestions** | On rejection, the system auto-suggests available alternatives |
+| **Availability Timeline** | Per-resource hourly view for any date |
+| **Dashboard** | Overview of events, requests, and allocation status |
+| **Test Suite** | 14 pytest tests covering auth, allocation, conflicts, and workflows |
 
 ---
 
-## Technology Stack
+## ??? Project Structure
 
-| Layer | Technology |
-| --- | --- |
-| Backend | Python 3.10+, Flask |
-| Database | SQLite, SQLAlchemy, Flask-Migrate |
-| Templates | HTML, Jinja2 |
-| Styling | Tailwind CSS |
-| Client-side behavior | Basic JavaScript |
-| Version control | Git and GitHub |
+```
+college-event-resource-system/
++-- app/
+¦   +-- __init__.py          # App factory + blueprint registration
+¦   +-- extensions.py        # SQLAlchemy, LoginManager
+¦   +-- services.py          # Core logic: conflict detection, atomic allocation, alternatives
+¦   +-- models/
+¦   ¦   +-- __init__.py      # Re-exports all models
+¦   ¦   +-- user.py          # User model with Flask-Login
+¦   ¦   +-- event.py
+¦   ¦   +-- resource.py
+¦   ¦   +-- resource_request.py
+¦   ¦   +-- allocation.py
+¦   +-- routes/
+¦   ¦   +-- auth.py          # Login / logout
+¦   ¦   +-- dashboard.py     # Home dashboard
+¦   ¦   +-- events.py        # Event CRUD
+¦   ¦   +-- resources.py     # Resource CRUD + availability
+¦   ¦   +-- requests.py      # Request submit / approve / reject
+¦   +-- utils/
+¦   ¦   +-- auth.py          # @admin_required decorator
+¦   +-- templates/
+¦       +-- base.html
+¦       +-- auth/
+¦       +-- dashboard/
+¦       +-- events/
+¦       +-- resources/
+¦       +-- requests/
++-- tests/                   # pytest test suite (14 tests)
++-- seed.py                  # Populate demo data
++-- init_db.py               # Create empty tables
++-- run.py                   # Development server entry point
++-- requirements.txt
++-- .env.example
+```
 
 ---
 
-## Installation and Local Setup
+## ?? Running Locally
 
 ### Prerequisites
+- Python 3.10+
+- pip
 
-- Python 3.10 or later
-- Git (optional, for cloning and version control)
+### 1. Clone the repository
 
-### Run locally
-
-1. Clone the repository and enter the project folder.
-
-   ```bash
-   git clone <repository-url>
-   cd college-event-resource-system
-   ```
-
-2. Create and activate a virtual environment.
-
-   ```powershell
-   python -m venv venv
-   .\venv\Scripts\Activate.ps1
-   ```
-
-   On macOS/Linux:
-
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-
-3. Install dependencies.
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Apply database migrations.
-
-   ```bash
-   flask --app run.py db upgrade
-   ```
-
-5. Start the application.
-
-   ```bash
-   python run.py
-   ```
-
-6. Open `http://127.0.0.1:5000` in a browser.
-
-The SQLite database is stored at `instance/app.db`. For a non-development secret key, copy `.env.example` to `.env` and replace the example value.
-
----
-
-## How Conflict Detection Works
-
-The application checks the `allocations` table on the backend before creating an active allocation. Two time ranges conflict only when both conditions are true:
-
-```text
-existing.start_datetime < requested.end_datetime
-AND
-existing.end_datetime > requested.start_datetime
+```bash
+git clone <your-repo-url>
+cd college-event-resource-system
 ```
 
-This uses strict comparisons, so adjacent bookings are supported:
+### 2. Create and activate a virtual environment
 
-| Existing allocation | New request | Result |
-| --- | --- | --- |
-| 10:00 AM â€“ 2:00 PM | 12:00 PM â€“ 4:00 PM | Rejected: overlaps |
-| 10:00 AM â€“ 2:00 PM | 2:00 PM â€“ 4:00 PM | Allowed: back-to-back |
-
-Only allocations with an **Active** status are considered. Cancelled allocations remain in the database for record keeping but no longer block a resource.
-
----
-
-## How Alternatives Are Selected
-
-When a resource requirement cannot be fulfilled, CampusFlow looks for candidates that meet all of these conditions:
-
-1. The resource is active.
-2. Its type matches the requested type.
-3. Its capacity is sufficient for the event when capacity applies.
-4. It has no active overlapping allocation in the requested time range.
-
-Candidates are ordered by resource name to keep suggestions predictable. The system presents a suitable alternative in the approval feedback when one is available.
-
----
-
-## Design Decisions and Assumptions
-
-- Each resource record represents one physical item or venue. Requesting a quantity of two therefore requires two suitable resource records.
-- Capacity is used for space-like resources such as auditoriums and laboratories. A blank capacity means the resource has no attendance limit.
-- All date/time values are handled as local campus time.
-- There is no authentication in this assignment version; the same interface is used for organizers and administrators.
-- Events, requests, and allocations are cancelled by status rather than deleted, preserving an audit trail.
-
----
-
-## Project Structure
-
-```text
-college-event-resource-system/
-â”œâ”€â”€ app/
-â”‚   â”œâ”€â”€ __init__.py                 # Application factory and error handlers
-â”‚   â”œâ”€â”€ constants.py                # Resource type choices
-â”‚   â”œâ”€â”€ extensions.py               # SQLAlchemy and migration setup
-â”‚   â”œâ”€â”€ models/                     # Event, resource, request, and allocation models
-â”‚   â”œâ”€â”€ routes/
-â”‚   â”‚   â”œâ”€â”€ dashboard.py            # Dashboard summary
-â”‚   â”‚   â”œâ”€â”€ events.py               # Event management and cancellation
-â”‚   â”‚   â”œâ”€â”€ resources.py            # Resource management and availability search
-â”‚   â”‚   â””â”€â”€ requests.py             # Requests, approval, conflicts, and allocations
-â”‚   â””â”€â”€ templates/                  # Jinja2 pages styled with Tailwind CSS
-â”œâ”€â”€ migrations/                     # Flask-Migrate database migrations
-â”œâ”€â”€ .env.example                    # Environment variable example
-â”œâ”€â”€ requirements.txt                # Python dependencies
-â”œâ”€â”€ run.py                          # Application entry point
-â””â”€â”€ README.md
+**Windows (PowerShell):**
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
 ```
 
+**macOS / Linux:**
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Configure environment variables
+
+Copy the example environment file and fill in values:
+
+```bash
+cp .env.example .env
+```
+
+.env should contain:
+```
+SECRET_KEY=your-secret-key-here
+DATABASE_URL=sqlite:///instance/college_events.db
+```
+
+### 5. Seed the database with demo data
+
+```bash
+python seed.py
+```
+
+This creates demo accounts and sample data:
+
+| Role | Username | Password |
+|---|---|---|
+| Admin | admin | admin123 |
+| Organizer | organizer | org123 |
+| Organizer | organizer2 | org123 |
+
+### 6. Start the development server
+
+```bash
+python run.py
+```
+
+Open your browser at http://localhost:5000
+
 ---
 
-## License
+## ?? Running Tests
 
-Created for the College Event Resource Allocation System technical assignment.
+```bash
+python -m pytest tests/ -v
+```
+
+Expected output: 14 passed
+
+---
+
+## ??? Architecture Notes
+
+### Atomic Allocation
+The approval workflow is strictly atomic:
+1. Validate request window against event schedule
+2. Check each requested resource: active status, capacity, time conflicts
+3. If ANY check fails: rollback, reject with reason, suggest alternatives
+4. If ALL checks pass: create Allocation rows, commit as a single transaction
+
+### Conflict Detection Formula
+Two time windows [A_start, A_end) and [B_start, B_end) conflict if:
+  A_start < B_end  AND  A_end > B_start
+
+### Alternative Selection
+On rejection, the system queries active resources of the same type with sufficient capacity and no conflicts. Returns smallest sufficient capacity (venues) or alphabetically first (equipment).
+
+---
+
+## ?? License
+
+MIT

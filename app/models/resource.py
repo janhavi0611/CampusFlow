@@ -32,10 +32,19 @@ class Resource(db.Model):
         default=datetime.utcnow
     )
 
+    RESOURCE_TYPES = [
+        "Auditorium",
+        "Laboratory",
+        "Projector",
+        "Microphone",
+        "Camera",
+        "Computer",
+    ]
+
     request_items = db.relationship(
-    "ResourceRequestItem",
-    back_populates="resource"
-)
+        "ResourceRequestItem",
+        back_populates="resource"
+    )
 
     allocations = db.relationship(
         "Allocation",
@@ -43,4 +52,4 @@ class Resource(db.Model):
     )
 
     def __repr__(self):
-        return f"<Resource {self.name}>"
+        return f"<Resource {self.name} ({self.resource_type})>"

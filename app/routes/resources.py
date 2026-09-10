@@ -1,113 +1,73 @@
-from flask import (
-    Blueprint,
-    render_template,
-    request,
-    redirect,
-    url_for,
-    flash,
-)
+from datetime import datetime
 
-from app.constants import RESOURCE_TYPES
+from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask_login import login_required
+
 from app.extensions import db
 from app.models import Resource
-from app.models import Allocation
+from app.services import get_resource_availability
+from app.utils.auth import admin_required
 
-
-resources_bp = Blueprint(
-    "resources",
-    __name__,
-    url_prefix="/resources"
-)
+resources_bp = Blueprint("resources", __name__, url_prefix="/resources")
 
 
 @resources_bp.route("/")
+@login_required
 def list_resources():
-
     status = request.args.get("status", "").strip().lower()
+    resource_type = request.args.get("type", "").strip()
 
     query = Resource.query
 
     if status == "active":
         query = query.filter_by(is_active=True)
-
     elif status == "inactive":
         query = query.filter_by(is_active=False)
 
-    resources = query.order_by(
-        Resource.name.asc()
-    ).all()
+    if resource_type:
+        query = query.filter_by(resource_type=resource_type)
+
+    resources = query.order_by(Resource.name.asc()).all()
 
     return render_template(
         "resources/list.html",
         resources=resources,
-        selected_status=status
+        selected_status=status,
+        selected_type=resource_type,
+        resource_types=Resource.RESOURCE_TYPES,
     )
 
+
 @resources_bp.route("/create", methods=["GET", "POST"])
+@admin_required
 def create_resource():
-
     if request.method == "POST":
-
         name = request.form.get("name", "").strip()
-
-        resource_type = request.form.get(
-            "resource_type",
-            ""
-        ).strip()
-
-        capacity_value = request.form.get(
-            "capacity",
-            ""
-        ).strip()
+        resource_type = request.form.get("resource_type", "").strip()
+        capacity_val = request.form.get("capacity", "").strip()
 
         if not name:
-            flash(
-                "Resource name is required.",
-                "error"
-            )
-            return render_template(
-                "resources/create.html",
-                resource_types=RESOURCE_TYPES
-            )
+            flash("Resource name is required.", "error")
+            return render_template("resources/create.html", resource_types=Resource.RESOURCE_TYPES)
 
-        if resource_type not in RESOURCE_TYPES:
-            flash(
-                "Invalid resource type.",
-                "error"
-            )
-            return render_template(
-                "resources/create.html",
-                resource_types=RESOURCE_TYPES
-            )
+        if resource_type not in Resource.RESOURCE_TYPES:
+            flash("Invalid resource type.", "error")
+            return render_template("resources/create.html", resource_types=Resource.RESOURCE_TYPES)
+
+        existing = Resource.query.filter_by(name=name).first()
+        if existing:
+            flash(f"A resource named '{name}' already exists.", "error")
+            return render_template("resources/create.html", resource_types=Resource.RESOURCE_TYPES)
 
         capacity = None
-
-        if capacity_value:
-
+        if capacity_val:
             try:
-                capacity = int(capacity_value)
-
+                capacity = int(capacity_val)
+                if capacity <= 0:
+                    raise ValueError
             except ValueError:
-                flash(
-                    "Capacity must be a valid number.",
-                    "error"
-                )
-
-                return render_template(
-                    "resources/create.html",
-                    resource_types=RESOURCE_TYPES
-                )
-
-            if capacity <= 0:
-                flash(
-                    "Capacity must be greater than zero.",
-                    "error"
-                )
-
-                return render_template(
-                    "resources/create.html",
-                    resource_types=RESOURCE_TYPES
-                )
+                flash("Capacity must be a positive whole number.", "error")
+                return render_template("resources/create.html", resource_types=Resource.RESOURCE_TYPES)
 
         resource = Resource(
             name=name,
@@ -119,206 +79,106 @@ def create_resource():
         db.session.add(resource)
         db.session.commit()
 
-        flash(
-            "Resource added successfully.",
-            "success"
-        )
+        flash(f"Resource '{name}' created successfully.", "success")
+        return redirect(url_for("resources.list_resources"))
 
-        return redirect(
-            url_for("resources.list_resources")
-        )
+    return render_template("resources/create.html", resource_types=Resource.RESOURCE_TYPES)
 
-    return render_template(
-        "resources/create.html",
-        resource_types=RESOURCE_TYPES
-    )
 
 @resources_bp.route("/<int:resource_id>/edit", methods=["GET", "POST"])
+@admin_required
 def edit_resource(resource_id):
-
     resource = db.get_or_404(Resource, resource_id)
 
     if request.method == "POST":
-
         name = request.form.get("name", "").strip()
+        resource_type = request.form.get("resource_type", "").strip()
+        capacity_val = request.form.get("capacity", "").strip()
 
-        resource_type = request.form.get(
-            "resource_type",
-            ""
-        ).strip()
-
-        capacity_value = request.form.get(
-            "capacity",
-            ""
-        ).strip()
-
-        # Validate resource name
         if not name:
-            flash(
-                "Resource name is required.",
-                "error"
-            )
+            flash("Resource name is required.", "error")
+            return render_template("resources/edit.html", resource=resource, resource_types=Resource.RESOURCE_TYPES)
 
-            return render_template(
-                "resources/edit.html",
-                resource=resource,
-                resource_types=RESOURCE_TYPES
-            )
+        if resource_type not in Resource.RESOURCE_TYPES:
+            flash("Invalid resource type.", "error")
+            return render_template("resources/edit.html", resource=resource, resource_types=Resource.RESOURCE_TYPES)
 
-        # Validate resource type
-        if resource_type not in RESOURCE_TYPES:
-            flash(
-                "Invalid resource type.",
-                "error"
-            )
+        existing = Resource.query.filter(Resource.name == name, Resource.id != resource.id).first()
+        if existing:
+            flash(f"Another resource named '{name}' already exists.", "error")
+            return render_template("resources/edit.html", resource=resource, resource_types=Resource.RESOURCE_TYPES)
 
-            return render_template(
-                "resources/edit.html",
-                resource=resource,
-                resource_types=RESOURCE_TYPES
-            )
-
-        # Capacity is optional
         capacity = None
-
-        if capacity_value:
-
+        if capacity_val:
             try:
-                capacity = int(capacity_value)
-
+                capacity = int(capacity_val)
+                if capacity <= 0:
+                    raise ValueError
             except ValueError:
-                flash(
-                    "Capacity must be a valid number.",
-                    "error"
-                )
+                flash("Capacity must be a positive whole number.", "error")
+                return render_template("resources/edit.html", resource=resource, resource_types=Resource.RESOURCE_TYPES)
 
-                return render_template(
-                    "resources/edit.html",
-                    resource=resource,
-                    resource_types=RESOURCE_TYPES
-                )
-
-            if capacity <= 0:
-                flash(
-                    "Capacity must be greater than zero.",
-                    "error"
-                )
-
-                return render_template(
-                    "resources/edit.html",
-                    resource=resource,
-                    resource_types=RESOURCE_TYPES
-                )
-
-        # Update the existing resource
         resource.name = name
         resource.resource_type = resource_type
         resource.capacity = capacity
 
         db.session.commit()
+        flash("Resource updated successfully.", "success")
+        return redirect(url_for("resources.list_resources"))
 
-        flash(
-            "Resource updated successfully.",
-            "success"
-        )
+    return render_template("resources/edit.html", resource=resource, resource_types=Resource.RESOURCE_TYPES)
 
-        return redirect(
-            url_for("resources.list_resources")
-        )
 
-    return render_template(
-        "resources/edit.html",
-        resource=resource,
-        resource_types=RESOURCE_TYPES
-    )
 @resources_bp.route("/<int:resource_id>/deactivate", methods=["POST"])
+@admin_required
 def deactivate_resource(resource_id):
-
     resource = db.get_or_404(Resource, resource_id)
-
-    if not resource.is_active:
-        flash(
-            "Resource is already inactive.",
-            "error"
-        )
-
-        return redirect(
-            url_for("resources.list_resources")
-        )
-
     resource.is_active = False
-
     db.session.commit()
+    flash(f"Resource '{resource.name}' deactivated.", "success")
+    return redirect(url_for("resources.list_resources"))
 
-    flash(
-        "Resource deactivated successfully.",
-        "success"
-    )
-
-    return redirect(
-        url_for("resources.list_resources")
-    )
 
 @resources_bp.route("/<int:resource_id>/activate", methods=["POST"])
+@admin_required
 def activate_resource(resource_id):
-
     resource = db.get_or_404(Resource, resource_id)
-
-    if resource.is_active:
-        flash(
-            "Resource is already active.",
-            "error"
-        )
-
-        return redirect(
-            url_for("resources.list_resources")
-        )
-
     resource.is_active = True
-
     db.session.commit()
-
-    flash(
-        "Resource activated successfully.",
-        "success"
-    )
-
-    return redirect(
-        url_for("resources.list_resources")
-    )
+    flash(f"Resource '{resource.name}' activated.", "success")
+    return redirect(url_for("resources.list_resources"))
 
 
 @resources_bp.route("/availability", methods=["GET"])
+@login_required
 def availability():
-    """Show active resources that are free for a selected time window."""
-    start_value = request.args.get("start_datetime", "").strip()
-    end_value = request.args.get("end_datetime", "").strip()
-    resource_type = request.args.get("resource_type", "").strip()
-    resources = []
-    error = None
+    date_str = request.args.get("date", "").strip()
+    resource_id_val = request.args.get("resource_id", "").strip()
 
-    if start_value or end_value:
+    selected_date = datetime.today().date()
+    if date_str:
         try:
-            from datetime import datetime
-            start_datetime = datetime.fromisoformat(start_value)
-            end_datetime = datetime.fromisoformat(end_value)
-            if end_datetime <= start_datetime:
-                raise ValueError
-            query = Resource.query.filter_by(is_active=True)
-            if resource_type:
-                query = query.filter_by(resource_type=resource_type)
-            for resource in query.order_by(Resource.name.asc()).all():
-                busy = Allocation.query.filter(
-                    Allocation.resource_id == resource.id,
-                    Allocation.status == "Active",
-                    Allocation.start_datetime < end_datetime,
-                    Allocation.end_datetime > start_datetime,
-                ).first()
-                if not busy:
-                    resources.append(resource)
+            selected_date = datetime.strptime(date_str, "%Y-%m-%d").date()
         except ValueError:
-            error = "Enter a valid time range with an end time after the start time."
+            flash("Invalid date format. Showing today's schedule.", "error")
 
-    return render_template("resources/availability.html", resources=resources,
-                           resource_types=RESOURCE_TYPES, selected_type=resource_type,
-                           start_value=start_value, end_value=end_value, error=error)
+    all_resources = Resource.query.filter_by(is_active=True).order_by(Resource.name.asc()).all()
+
+    schedules = []
+    if resource_id_val:
+        try:
+            rid = int(resource_id_val)
+            schedules.append(get_resource_availability(rid, selected_date))
+        except ValueError:
+            pass
+    else:
+        for res in all_resources:
+            schedules.append(get_resource_availability(res.id, selected_date))
+
+    return render_template(
+        "resources/availability.html",
+        all_resources=all_resources,
+        schedules=schedules,
+        selected_date=selected_date.strftime("%Y-%m-%d"),
+        selected_resource_id=resource_id_val,
+    )

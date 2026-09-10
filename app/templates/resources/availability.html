@@ -1,7 +1,73 @@
-{% extends 'base.html' %}
-{% block title %}Resource Availability · CampusFlow{% endblock %}
+{% extends "base.html" %}
+
+{% block title %}Resource Availability - CampusFlow{% endblock %}
+
 {% block content %}
-<div class="mb-8"><p class="text-sm font-semibold uppercase tracking-widest text-indigo-600">Planning tool</p><h1 class="mt-2 text-3xl font-bold text-ink">Resource availability</h1><p class="mt-2 text-slate-500">Find active resources that have no overlapping allocation.</p></div>
-<form class="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 md:grid-cols-4"><label class="text-sm font-medium">Start<input type="datetime-local" name="start_datetime" value="{{ start_value }}" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"></label><label class="text-sm font-medium">End<input type="datetime-local" name="end_datetime" value="{{ end_value }}" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"></label><label class="text-sm font-medium">Type<select name="resource_type" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"><option value="">All types</option>{% for type in resource_types %}<option value="{{ type }}" {% if selected_type == type %}selected{% endif %}>{{ type }}</option>{% endfor %}</select></label><button class="self-end rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white">Search availability</button></form>
-{% if error %}<p class="mt-4 rounded-xl bg-rose-50 p-4 text-rose-800">{{ error }}</p>{% elif start_value and end_value %}<section class="mt-6 rounded-2xl border border-slate-200 bg-white"><div class="border-b border-slate-100 px-6 py-4 font-semibold">{{ resources|length }} resource(s) available</div><div class="divide-y divide-slate-100">{% for resource in resources %}<div class="flex justify-between px-6 py-4"><div><p class="font-semibold">{{ resource.name }}</p><p class="text-sm text-slate-500">{{ resource.resource_type }}</p></div><p class="text-sm text-slate-500">{% if resource.capacity %}Capacity {{ resource.capacity }}{% else %}No capacity limit{% endif %}</p></div>{% else %}<p class="p-8 text-center text-slate-500">No suitable active resources are free for this period.</p>{% endfor %}</div></section>{% endif %}
+<div class="space-y-6">
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div>
+      <h1 class="text-2xl font-extrabold text-ink">Resource Availability Schedule</h1>
+      <p class="text-xs text-stone-500 mt-1">Hourly timeline view for active university resources (08:00 - 20:00)</p>
+    </div>
+    <a href="{{ url_for('resources.list_resources') }}" class="text-xs font-semibold text-stone-500 hover:text-stone-800">&larr; Back to Resources</a>
+  </div>
+
+  <!-- Date & Resource Filter Form -->
+  <form method="GET" action="{{ url_for('resources.availability') }}" class="rounded-2xl border border-brand-200/70 bg-white p-4 shadow-sm flex flex-wrap items-center gap-4">
+    <div class="flex-1 min-w-[200px]">
+      <label for="date" class="block text-[11px] font-bold uppercase tracking-wider text-stone-600">Select Date</label>
+      <input type="date" id="date" name="date" value="{{ selected_date }}"
+             class="mt-1 w-full rounded-xl border border-brand-200 bg-brand-50/30 px-3 py-2 text-xs text-stone-800 focus:border-brand-500 focus:outline-none">
+    </div>
+
+    <div class="flex-1 min-w-[200px]">
+      <label for="resource_id" class="block text-[11px] font-bold uppercase tracking-wider text-stone-600">Filter Specific Resource</label>
+      <select id="resource_id" name="resource_id" class="mt-1 w-full rounded-xl border border-brand-200 bg-brand-50/30 px-3 py-2 text-xs text-stone-800 focus:border-brand-500 focus:outline-none">
+        <option value="">All Active Resources</option>
+        {% for r in all_resources %}
+        <option value="{{ r.id }}" {% if selected_resource_id == r.id|string %}selected{% endif %}>{{ r.name }} ({{ r.resource_type }})</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="flex items-end gap-2 pt-4 sm:pt-0">
+      <button type="submit" class="rounded-xl bg-ink px-4 py-2 text-xs font-bold text-white shadow hover:bg-brand-800 transition">View Schedule</button>
+    </div>
+  </form>
+
+  <!-- Hourly Schedules Cards -->
+  <div class="space-y-6">
+    {% for item in schedules %}
+    <div class="rounded-2xl border border-brand-200/80 bg-white p-6 shadow-md space-y-4">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-brand-100 pb-3 gap-2">
+        <div>
+          <h2 class="text-lg font-bold text-ink">{{ item.resource.name }}</h2>
+          <p class="text-xs text-stone-500">Type: <span class="font-semibold text-brand-900">{{ item.resource.resource_type }}</span> {% if item.resource.capacity %}&middot; Capacity: {{ item.resource.capacity }} attendees{% endif %}</p>
+        </div>
+        <span class="rounded-lg bg-brand-50 px-3 py-1 text-xs font-bold text-brand-800 border border-brand-200">
+          {{ selected_date }}
+        </span>
+      </div>
+
+      <!-- Hourly Timeline Grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+        {% for slot in item.slots %}
+        <div class="rounded-xl p-3 border text-center transition
+          {% if slot.is_booked %}bg-rose-50 border-rose-200 text-rose-900{% else %}bg-emerald-50/70 border-emerald-200 text-emerald-900{% endif %}">
+          <div class="text-[11px] font-bold">{{ slot.time }}</div>
+          <div class="mt-1 text-[10px] font-extrabold uppercase tracking-wider">
+            {% if slot.is_booked %}
+            <span class="text-rose-700">Booked</span>
+            {% if slot.event_name %}<div class="text-[9px] text-stone-600 truncate mt-0.5" title="{{ slot.event_name }}">{{ slot.event_name }}</div>{% endif %}
+            {% else %}
+            <span class="text-emerald-700">Available</span>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
 {% endblock %}

@@ -14,6 +14,12 @@ class ResourceRequest(db.Model):
         nullable=False
     )
 
+    requester_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=True
+    )
+
     start_datetime = db.Column(
         db.DateTime,
         nullable=False
@@ -30,14 +36,26 @@ class ResourceRequest(db.Model):
         default="Pending"
     )
 
+    rejection_reason = db.Column(
+        db.Text,
+        nullable=True
+    )
+
     created_at = db.Column(
         db.DateTime,
         nullable=False,
         default=datetime.utcnow
     )
 
+    STATUS_CHOICES = ["Pending", "Approved", "Allocated", "Rejected", "Cancelled"]
+
     event = db.relationship(
         "Event",
+        back_populates="resource_requests"
+    )
+
+    requester = db.relationship(
+        "User",
         back_populates="resource_requests"
     )
 
@@ -46,11 +64,22 @@ class ResourceRequest(db.Model):
         back_populates="request",
         cascade="all, delete-orphan"
     )
+
     requirements = db.relationship(
-    "ResourceRequirement",
-    back_populates="request",
-    cascade="all, delete-orphan"
-)
+        "ResourceRequirement",
+        back_populates="request",
+        cascade="all, delete-orphan"
+    )
+
+    allocations = db.relationship(
+        "Allocation",
+        back_populates="request",
+        cascade="all, delete-orphan"
+    )
+
+    def __repr__(self):
+        return f"<ResourceRequest {self.id} (Event #{self.event_id} - {self.status})>"
+
 
 class ResourceRequirement(db.Model):
     __tablename__ = "resource_requirements"
@@ -78,6 +107,7 @@ class ResourceRequirement(db.Model):
         "ResourceRequest",
         back_populates="requirements"
     )
+
 
 class ResourceRequestItem(db.Model):
     __tablename__ = "resource_request_items"
@@ -109,20 +139,26 @@ class ResourceRequestItem(db.Model):
     allocation = db.relationship(
         "Allocation",
         back_populates="request_item",
-        uselist=False,  #One request item can have at most one allocation.
+        uselist=False,
         cascade="all, delete-orphan"
     )
+
 
 class Allocation(db.Model):
     __tablename__ = "allocations"
 
     id = db.Column(db.Integer, primary_key=True)
 
+    request_id = db.Column(
+        db.Integer,
+        db.ForeignKey("resource_requests.id"),
+        nullable=True
+    )
+
     request_item_id = db.Column(
         db.Integer,
         db.ForeignKey("resource_request_items.id"),
-        nullable=False,
-        unique=True
+        nullable=True
     )
 
     resource_id = db.Column(
@@ -144,13 +180,18 @@ class Allocation(db.Model):
     status = db.Column(
         db.String(20),
         nullable=False,
-        default="Active"
+        default="Allocated"  # 'Allocated' | 'Active' | 'Cancelled'
     )
 
     created_at = db.Column(
         db.DateTime,
         nullable=False,
         default=datetime.utcnow
+    )
+
+    request = db.relationship(
+        "ResourceRequest",
+        back_populates="allocations"
     )
 
     request_item = db.relationship(
@@ -162,3 +203,6 @@ class Allocation(db.Model):
         "Resource",
         back_populates="allocations"
     )
+
+    def __repr__(self):
+        return f"<Allocation Resource #{self.resource_id} ({self.status})>"

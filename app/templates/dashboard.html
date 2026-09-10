@@ -1,7 +1,142 @@
-{% extends 'base.html' %}
-{% block title %}Dashboard · CampusFlow{% endblock %}
+{% extends "base.html" %}
+
+{% block title %}Dashboard - CampusFlow{% endblock %}
+
 {% block content %}
-<div class="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p class="mb-2 text-sm font-semibold uppercase tracking-widest text-indigo-600">College operations</p><h1 class="text-3xl font-bold tracking-tight text-ink">Good planning starts here.</h1><p class="mt-2 text-slate-500">Manage events, shared resources and approvals in one place.</p></div><div class="flex gap-3"><a href="{{ url_for('events.create_event') }}" class="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white">New event</a><a href="{{ url_for('requests.create_request') }}" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold">Request resources</a></div></div>
-<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><div class="rounded-2xl bg-indigo-600 p-5 text-white"><p class="text-indigo-100">Total events</p><p class="mt-2 text-4xl font-bold">{{ total_events }}</p></div><div class="rounded-2xl border border-slate-200 bg-white p-5"><p class="text-slate-500">Active resources</p><p class="mt-2 text-4xl font-bold text-ink">{{ active_resources }} <span class="text-base font-medium text-slate-400">/ {{ total_resources }}</span></p></div><div class="rounded-2xl border border-slate-200 bg-white p-5"><p class="text-slate-500">Pending approvals</p><p class="mt-2 text-4xl font-bold text-amber-600">{{ pending_requests }}</p></div></div>
-<div class="mt-8 grid gap-6 lg:grid-cols-3"><section class="overflow-hidden rounded-2xl border border-slate-200 bg-white lg:col-span-2"><div class="flex items-center justify-between border-b border-slate-100 px-6 py-4"><h2 class="font-bold text-ink">Upcoming events</h2><a href="{{ url_for('events.list_events') }}" class="text-sm font-semibold text-indigo-600">View all →</a></div>{% if upcoming_events %}<div class="divide-y divide-slate-100">{% for event in upcoming_events %}<div class="flex items-center justify-between gap-4 px-6 py-4"><div><p class="font-semibold">{{ event.name }}</p><p class="mt-1 text-sm text-slate-500">{{ event.organizer }} · {{ event.expected_attendance }} attendees</p></div><div class="text-right text-sm"><p class="font-medium">{{ event.start_datetime.strftime('%d %b, %I:%M %p') }}</p><span class="text-slate-500">{{ event.status }}</span></div></div>{% endfor %}</div>{% else %}<p class="p-8 text-center text-slate-500">No events have been created yet.</p>{% endif %}</section><aside class="rounded-2xl bg-slate-900 p-6 text-white"><h2 class="font-bold">Request activity</h2><div class="mt-5 space-y-4 text-sm"><div class="flex justify-between"><span class="text-slate-300">Allocated</span><b>{{ allocated_requests }}</b></div><div class="flex justify-between"><span class="text-slate-300">Rejected</span><b>{{ rejected_requests }}</b></div><div class="flex justify-between"><span class="text-slate-300">Cancelled</span><b>{{ cancelled_requests }}</b></div><div class="border-t border-slate-700 pt-4 text-slate-300">Inactive resources: <b class="text-white">{{ inactive_resources }}</b></div></div><a href="{{ url_for('resources.availability') }}" class="mt-6 block rounded-xl bg-white/10 px-4 py-3 text-center text-sm font-semibold">Check availability</a></aside></div>
+<div class="space-y-8">
+  <!-- Header Banner -->
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 rounded-2xl border border-brand-200/80 bg-gradient-to-r from-brand-900 via-brand-800 to-ink p-6 text-cream shadow-xl">
+    <div>
+      <div class="inline-flex items-center gap-2 rounded-lg bg-brand-400/20 px-3 py-1 text-xs font-semibold text-brand-200 border border-brand-400/30">
+        <span>Role:</span>
+        <span class="text-white uppercase tracking-wider font-bold">{% if current_user.is_admin %}Administrator{% else %}Event Organizer{% endif %}</span>
+      </div>
+      <h1 class="mt-2 text-2xl sm:text-3xl font-extrabold text-white">Welcome back, {{ current_user.name }}!</h1>
+      <p class="mt-1 text-sm text-brand-200">Overview of events, resource allocation requests, and availability.</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <a href="{{ url_for('events.create_event') }}" class="rounded-xl bg-brand-400 px-4 py-2.5 text-xs font-bold text-ink shadow hover:bg-brand-300 transition">
+        + Create Event
+      </a>
+      <a href="{{ url_for('requests.create_request') }}" class="rounded-xl bg-white/10 px-4 py-2.5 text-xs font-bold text-white border border-white/20 hover:bg-white/20 transition">
+        + Submit Request
+      </a>
+      {% if current_user.is_admin %}
+      <a href="{{ url_for('resources.create_resource') }}" class="rounded-xl bg-brand-600 px-4 py-2.5 text-xs font-bold text-white shadow hover:bg-brand-500 transition">
+        + Add Resource
+      </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Metric Stat Cards -->
+  <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+    <div class="rounded-2xl border border-brand-200/60 bg-white p-5 shadow-sm hover:shadow-md transition">
+      <p class="text-xs font-bold uppercase tracking-wider text-stone-500">Total Events</p>
+      <p class="mt-2 text-3xl font-extrabold text-ink">{{ total_events }}</p>
+      <a href="{{ url_for('events.list_events') }}" class="mt-3 inline-block text-xs font-semibold text-brand-600 hover:text-brand-800">View Events &rarr;</a>
+    </div>
+
+    <div class="rounded-2xl border border-brand-200/60 bg-white p-5 shadow-sm hover:shadow-md transition">
+      <p class="text-xs font-bold uppercase tracking-wider text-amber-700">Pending Requests</p>
+      <p class="mt-2 text-3xl font-extrabold text-amber-700">{{ pending_requests }}</p>
+      <a href="{{ url_for('requests.list_requests', status='Pending') }}" class="mt-3 inline-block text-xs font-semibold text-amber-700 hover:underline">Review Pending &rarr;</a>
+    </div>
+
+    <div class="rounded-2xl border border-emerald-200/60 bg-white p-5 shadow-sm hover:shadow-md transition">
+      <p class="text-xs font-bold uppercase tracking-wider text-emerald-700">Allocated Requests</p>
+      <p class="mt-2 text-3xl font-extrabold text-emerald-800">{{ allocated_requests }}</p>
+      <a href="{{ url_for('requests.list_requests', status='Allocated') }}" class="mt-3 inline-block text-xs font-semibold text-emerald-700 hover:underline">View Allocations &rarr;</a>
+    </div>
+
+    <div class="rounded-2xl border border-brand-200/60 bg-white p-5 shadow-sm hover:shadow-md transition">
+      <p class="text-xs font-bold uppercase tracking-wider text-stone-500">Active Resources</p>
+      <p class="mt-2 text-3xl font-extrabold text-ink">{{ active_resources }} <span class="text-xs font-normal text-stone-400">/ {{ total_resources }}</span></p>
+      <a href="{{ url_for('resources.list_resources') }}" class="mt-3 inline-block text-xs font-semibold text-brand-600 hover:text-brand-800">Manage Resources &rarr;</a>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 gap-8 lg:grid-cols-3">
+    <!-- Pending Requests Queue (2 Cols) -->
+    <div class="lg:col-span-2 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-bold text-ink flex items-center gap-2">
+          <span>Pending Resource Requests</span>
+          {% if pending_requests > 0 %}
+          <span class="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800 border border-amber-300">{{ pending_requests }}</span>
+          {% endif %}
+        </h2>
+        <a href="{{ url_for('requests.list_requests') }}" class="text-xs font-semibold text-brand-600 hover:underline">View All</a>
+      </div>
+
+      <div class="rounded-2xl border border-brand-200/70 bg-white shadow-sm overflow-hidden">
+        {% if pending_request_list %}
+        <div class="divide-y divide-brand-100">
+          {% for req in pending_request_list %}
+          <div class="p-4 sm:p-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-brand-50/40 transition">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-bold text-ink">#{{ req.id }} &middot; {{ req.event.name }}</span>
+                <span class="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200">Pending</span>
+              </div>
+              <p class="mt-1 text-xs text-stone-600">
+                Time Window: <span class="font-medium text-stone-800">{{ req.start_datetime.strftime('%b %d, %H:%M') }} - {{ req.end_datetime.strftime('%H:%M') }}</span>
+              </p>
+              <div class="mt-2 flex flex-wrap gap-1.5">
+                {% for item in req.items %}
+                <span class="rounded-lg bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-900 border border-brand-200/80">{{ item.resource.name }}</span>
+                {% endfor %}
+                {% for req_type in req.requirements %}
+                <span class="rounded-lg bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-900 border border-amber-200">{{ req_type.quantity }}x {{ req_type.resource_type }}</span>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+              <a href="{{ url_for('requests.detail_request', request_id=req.id) }}" class="flex-1 sm:flex-initial text-center rounded-xl bg-brand-50 px-3.5 py-2 text-xs font-semibold text-brand-800 border border-brand-200 hover:bg-brand-100 transition">Details</a>
+              {% if current_user.is_admin %}
+              <form method="POST" action="{{ url_for('requests.approve_request', request_id=req.id) }}" class="flex-1 sm:flex-initial">
+                <button type="submit" class="w-full rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow hover:bg-emerald-700 transition">Approve</button>
+              </form>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-8 text-center text-stone-500">
+          <p class="text-sm font-medium">No pending resource requests at the moment.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Upcoming Events Sidebar (1 Col) -->
+    <div class="space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-bold text-ink">Upcoming Events</h2>
+        <a href="{{ url_for('events.list_events') }}" class="text-xs font-semibold text-brand-600 hover:underline">View All</a>
+      </div>
+
+      <div class="rounded-2xl border border-brand-200/70 bg-white p-4 shadow-sm space-y-3">
+        {% if upcoming_events %}
+          {% for ev in upcoming_events %}
+          <a href="{{ url_for('events.detail_event', event_id=ev.id) }}" class="block rounded-xl border border-brand-100 bg-brand-50/30 p-3.5 hover:bg-brand-50 transition group">
+            <div class="flex justify-between items-start">
+              <h3 class="text-sm font-bold text-ink group-hover:text-brand-600 transition">{{ ev.name }}</h3>
+              <span class="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-stone-600">{{ ev.status }}</span>
+            </div>
+            <p class="mt-1 text-xs text-stone-500">Organizer: {{ ev.organizer }}</p>
+            <div class="mt-2 flex items-center justify-between text-[11px] text-stone-600">
+              <span>📅 {{ ev.start_datetime.strftime('%b %d, %Y') }}</span>
+              <span>👥 {{ ev.expected_attendance }} attendees</span>
+            </div>
+          </a>
+          {% endfor %}
+        {% else %}
+        <p class="py-6 text-center text-xs text-stone-500">No upcoming events scheduled.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

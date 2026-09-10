@@ -1,719 +1,207 @@
 from datetime import datetime
 
-from flask import (
-    Blueprint,
-    render_template,
-    request,
-    redirect,
-    url_for,
-    flash,
-)
+from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
 
 from app.extensions import db
-from app.models import (
-    Event,
-    Resource,
-    ResourceRequest,
-    ResourceRequestItem,
-    ResourceRequirement,
-    Allocation,
-)
+from app.models import Event, Resource, ResourceRequest, ResourceRequestItem, ResourceRequirement
+from app.services import process_allocation
+from app.utils.auth import admin_required
+
+requests_bp = Blueprint("requests", __name__, url_prefix="/requests")
 
 
-requests_bp = Blueprint(
-    "requests",
-    __name__,
-    url_prefix="/requests"
-)
-
-
-ALLOWED_RESOURCE_TYPES = {
-    "Auditorium",
-    "Laboratory",
-    "Projector",
-    "Microphone",
-    "Camera",
-    "Computer",
-}
-
-
-def check_resource_suitability(event, resource):
-    """Check whether a resource can be used for the event."""
-
-    if resource.capacity is not None:
-        if event.expected_attendance > resource.capacity:
-            return (
-                False,
-                f"{resource.name} has capacity {resource.capacity}, "
-                f"but the event expects {event.expected_attendance} attendees."
-            )
-
-    return True, None
-
-
-def resource_has_conflict(resource, start_datetime, end_datetime):
-    """Check whether a resource is already booked during the requested time."""
-
-    conflict = Allocation.query.filter(
-        Allocation.resource_id == resource.id,
-        Allocation.status == "Active",
-        Allocation.start_datetime < end_datetime,
-        Allocation.end_datetime > start_datetime
-    ).first()
-
-    return conflict is not None
-
-
-def find_available_resources(
-    event,
-    resource_type,
-    quantity,
-    start_datetime,
-    end_datetime,
-    excluded_resource_ids=None
-):
-    """
-    Find active, suitable and available physical resources.
-
-    Resources are selected only if:
-    - type matches
-    - resource is active
-    - capacity is sufficient
-    - there is no overlapping allocation
-    """
-
-    if excluded_resource_ids is None:
-        excluded_resource_ids = set()
-
-    resources = Resource.query.filter(
-        Resource.resource_type == resource_type,
-        Resource.is_active.is_(True)
-    ).order_by(
-        Resource.name.asc()
-    ).all()
-
-    available = []
-
-    for resource in resources:
-
-        if resource.id in excluded_resource_ids:
+def parse_datetime(s: str) -> datetime | None:
+    if not s:
+        return None
+    for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
             continue
-
-        suitable, _ = check_resource_suitability(
-            event,
-            resource
-        )
-
-        if not suitable:
-            continue
-
-        if resource_has_conflict(
-            resource,
-            start_datetime,
-            end_datetime
-        ):
-            continue
-
-        available.append(resource)
-
-        if len(available) >= quantity:
-            break
-
-    return available
-
-
-def get_alternatives(
-    event,
-    resource_type,
-    start_datetime,
-    end_datetime,
-    excluded_resource_ids=None
-):
-    """
-    Find suitable alternatives of the requested resource type.
-    """
-
-    return find_available_resources(
-        event=event,
-        resource_type=resource_type,
-        quantity=1,
-        start_datetime=start_datetime,
-        end_datetime=end_datetime,
-        excluded_resource_ids=excluded_resource_ids
-    )
+    return None
 
 
 @requests_bp.route("/")
+@login_required
 def list_requests():
+    status = request.args.get("status", "").strip()
 
-    requests = ResourceRequest.query.order_by(
-        ResourceRequest.created_at.desc()
-    ).all()
+    query = ResourceRequest.query
+
+    if not current_user.is_admin:
+        query = query.filter((ResourceRequest.requester_id == current_user.id) | (ResourceRequest.requester_id.is_(None)))
+
+    if status:
+        query = query.filter_by(status=status)
+
+    requests_list = query.order_by(ResourceRequest.created_at.desc()).all()
 
     return render_template(
         "requests/list.html",
-        requests=requests
+        requests=requests_list,
+        selected_status=status,
+        status_choices=ResourceRequest.STATUS_CHOICES,
     )
+
+
+@requests_bp.route("/<int:request_id>")
+@login_required
+def detail_request(request_id):
+    req = db.get_or_404(ResourceRequest, request_id)
+    if not current_user.is_admin and req.requester_id and req.requester_id != current_user.id:
+        flash("You do not have permission to view this resource request.", "error")
+        return redirect(url_for("requests.list_requests"))
+
+    return render_template("requests/detail.html", req=req)
 
 
 @requests_bp.route("/create", methods=["GET", "POST"])
+@login_required
 def create_request():
+    events_query = Event.query
+    if not current_user.is_admin:
+        events_query = events_query.filter((Event.owner_id == current_user.id) | (Event.owner_id.is_(None)))
+    events = events_query.filter(Event.status.notin_(["Cancelled", "Completed"])).order_by(Event.start_datetime.asc()).all()
 
-    events = Event.query.order_by(
-        Event.start_datetime.asc()
-    ).all()
+    resources = Resource.query.filter_by(is_active=True).order_by(Resource.name.asc()).all()
 
     if request.method == "POST":
-
-        # -------------------------------------------------
-        # Event validation
-        # -------------------------------------------------
-
-        event_id_value = request.form.get(
-            "event_id",
-            ""
-        ).strip()
+        event_id_val = request.form.get("event_id", "").strip()
+        start_str = request.form.get("start_datetime", "").strip()
+        end_str = request.form.get("end_datetime", "").strip()
+        resource_ids = request.form.getlist("resource_ids")
+        requirement_types = request.form.getlist("requirement_types")
+        requirement_quantities = request.form.getlist("requirement_quantities")
 
         try:
-            event_id = int(event_id_value)
-        except ValueError:
+            event_id = int(event_id_val)
+            event = db.get_or_404(Event, event_id)
+        except (ValueError, Exception):
+            flash("Please select a valid event.", "error")
+            return render_template("requests/create.html", events=events, resources=resources, resource_types=Resource.RESOURCE_TYPES)
+
+        if not current_user.is_admin and event.owner_id and event.owner_id != current_user.id:
+            flash("You can only submit resource requests for your own events.", "error")
+            return render_template("requests/create.html", events=events, resources=resources, resource_types=Resource.RESOURCE_TYPES)
+
+        start_dt = parse_datetime(start_str)
+        end_dt = parse_datetime(end_str)
+
+        if not start_dt or not end_dt or end_dt <= start_dt:
+            flash("Please enter a valid request time window.", "error")
+            return render_template("requests/create.html", events=events, resources=resources, resource_types=Resource.RESOURCE_TYPES)
+
+        # Time window validation against event schedule
+        if start_dt < event.start_datetime or end_dt > event.end_datetime:
             flash(
-                "Please select a valid event.",
-                "error"
+                f"Request window must be within the event window "
+                f"({event.start_datetime.strftime('%Y-%m-%d %H:%M')} to {event.end_datetime.strftime('%Y-%m-%d %H:%M')}).",
+                "error",
             )
+            return render_template("requests/create.html", events=events, resources=resources, resource_types=Resource.RESOURCE_TYPES)
 
-            return render_template(
-                "requests/create.html",
-                events=events
-            )
+        if not resource_ids and not requirement_types:
+            flash("Please select at least one resource or resource requirement.", "error")
+            return render_template("requests/create.html", events=events, resources=resources, resource_types=Resource.RESOURCE_TYPES)
 
-        event = db.session.get(
-            Event,
-            event_id
-        )
-
-        if event is None:
-            flash(
-                "Selected event does not exist.",
-                "error"
-            )
-
-            return render_template(
-                "requests/create.html",
-                events=events
-            )
-
-        if event.status in {"Cancelled", "Completed", "Rejected"}:
-            flash(
-                "Resources cannot be requested for a cancelled, completed, or rejected event.",
-                "error"
-            )
-            return render_template(
-                "requests/create.html",
-                events=events
-            )
-
-        # -------------------------------------------------
-        # Date/time validation
-        # -------------------------------------------------
-
-        start_value = request.form.get(
-            "start_datetime",
-            ""
-        ).strip()
-
-        end_value = request.form.get(
-            "end_datetime",
-            ""
-        ).strip()
-
-        try:
-            start_datetime = datetime.fromisoformat(
-                start_value
-            )
-
-            end_datetime = datetime.fromisoformat(
-                end_value
-            )
-
-        except ValueError:
-            flash(
-                "Please enter valid start and end dates.",
-                "error"
-            )
-
-            return render_template(
-                "requests/create.html",
-                events=events
-            )
-
-        if end_datetime <= start_datetime:
-            flash(
-                "End date/time must be after start date/time.",
-                "error"
-            )
-
-            return render_template(
-                "requests/create.html",
-                events=events
-            )
-
-        # Request must stay within event time.
-
-        if start_datetime < event.start_datetime:
-            flash(
-                "Request start time cannot be before the event starts.",
-                "error"
-            )
-
-            return render_template(
-                "requests/create.html",
-                events=events
-            )
-
-        if end_datetime > event.end_datetime:
-            flash(
-                "Request end time cannot be after the event ends.",
-                "error"
-            )
-
-            return render_template(
-                "requests/create.html",
-                events=events
-            )
-
-        # -------------------------------------------------
-        # Resource requirements
-        # -------------------------------------------------
-
-        resource_types = request.form.getlist(
-            "required_resource_type"
-        )
-
-        quantities = request.form.getlist(
-            "quantity"
-        )
-
-        if not resource_types:
-            flash(
-                "Please add at least one resource requirement.",
-                "error"
-            )
-
-            return render_template(
-                "requests/create.html",
-                events=events
-            )
-
-        if len(resource_types) != len(quantities):
-            flash(
-                "Invalid resource requirements.",
-                "error"
-            )
-
-            return render_template(
-                "requests/create.html",
-                events=events
-            )
-
-        requirements_data = []
-
-        for resource_type, quantity_value in zip(
-            resource_types,
-            quantities
-        ):
-
-            resource_type = resource_type.strip()
-
-            if resource_type not in ALLOWED_RESOURCE_TYPES:
-                flash(
-                    f"Invalid resource type: {resource_type}.",
-                    "error"
-                )
-
-                return render_template(
-                    "requests/create.html",
-                    events=events
-                )
-
-            try:
-                quantity = int(quantity_value)
-            except (TypeError, ValueError):
-                flash(
-                    "Resource quantity must be a valid number.",
-                    "error"
-                )
-
-                return render_template(
-                    "requests/create.html",
-                    events=events
-                )
-
-            if quantity < 1:
-                flash(
-                    "Resource quantity must be at least 1.",
-                    "error"
-                )
-
-                return render_template(
-                    "requests/create.html",
-                    events=events
-                )
-
-            requirements_data.append(
-                {
-                    "resource_type": resource_type,
-                    "quantity": quantity
-                }
-            )
-
-        # -------------------------------------------------
-        # Create request
-        # -------------------------------------------------
-
-        resource_request = ResourceRequest(
+        req = ResourceRequest(
             event_id=event.id,
-            start_datetime=start_datetime,
-            end_datetime=end_datetime,
-            status="Pending"
+            requester_id=current_user.id,
+            start_datetime=start_dt,
+            end_datetime=end_dt,
+            status="Pending",
         )
 
-        try:
+        db.session.add(req)
+        db.session.flush()
 
-            db.session.add(resource_request)
+        # Add specific physical resources
+        for rid_str in resource_ids:
+            if rid_str.strip():
+                try:
+                    rid = int(rid_str)
+                    item = ResourceRequestItem(request_id=req.id, resource_id=rid)
+                    db.session.add(item)
+                except ValueError:
+                    continue
 
-            db.session.flush()
+        # Add resource requirements (e.g. 2 Projectors)
+        for rtype, rqty in zip(requirement_types, requirement_quantities):
+            if rtype.strip() and rqty.strip():
+                try:
+                    qty = int(rqty)
+                    if qty > 0:
+                        requirement = ResourceRequirement(
+                            request_id=req.id,
+                            resource_type=rtype.strip(),
+                            quantity=qty,
+                        )
+                        db.session.add(requirement)
+                except ValueError:
+                    continue
 
-            for requirement_data in requirements_data:
+        db.session.commit()
+        flash("Resource request submitted successfully. Awaiting admin approval.", "success")
+        return redirect(url_for("requests.detail_request", request_id=req.id))
 
-                requirement = ResourceRequirement(
-                    request_id=resource_request.id,
-                    resource_type=requirement_data["resource_type"],
-                    quantity=requirement_data["quantity"]
-                )
-
-                db.session.add(requirement)
-
-            db.session.commit()
-
-        except Exception:
-
-            db.session.rollback()
-
-            flash(
-                "Unable to create the resource request.",
-                "error"
-            )
-
-            return render_template(
-                "requests/create.html",
-                events=events
-            )
-
-        flash(
-            "Resource request created successfully.",
-            "success"
-        )
-
-        return redirect(
-            url_for("requests.list_requests")
-        )
-
-    return render_template(
-        "requests/create.html",
-        events=events
-    )
+    return render_template("requests/create.html", events=events, resources=resources, resource_types=Resource.RESOURCE_TYPES)
 
 
-@requests_bp.route(
-    "/<int:request_id>/approve",
-    methods=["POST"]
-)
+@requests_bp.route("/<int:request_id>/approve", methods=["POST"])
+@admin_required
 def approve_request(request_id):
+    success, message, alternatives = process_allocation(request_id)
+    if success:
+        flash("Resource request approved and resources allocated atomically!", "success")
+    else:
+        alt_msg = ""
+        if alternatives:
+            alt_str = ", ".join([f"{a['requested']} -> Try '{a['alternative']}'" for a in alternatives])
+            alt_msg = f" Recommended alternatives: {alt_str}."
+        flash(f"Request Rejected: {message}{alt_msg}", "error")
 
-    resource_request = db.session.get(
-        ResourceRequest,
-        request_id
-    )
-
-    if resource_request is None:
-        flash(
-            "Resource request not found.",
-            "error"
-        )
-
-        return redirect(
-            url_for("requests.list_requests")
-        )
-
-    if resource_request.status != "Pending":
-        flash(
-            "Only pending requests can be approved.",
-            "error"
-        )
-
-        return redirect(
-            url_for("requests.list_requests")
-        )
-
-    event = resource_request.event
-
-    try:
-
-        # -------------------------------------------------
-        # FIRST find ALL resources.
-        #
-        # Nothing is allocated until every requirement
-        # can be satisfied.
-        # -------------------------------------------------
-
-        resources_to_allocate = []
-        selected_resource_ids = set()
-
-        for requirement in resource_request.requirements:
-
-            available_resources = find_available_resources(
-                event=event,
-                resource_type=requirement.resource_type,
-                quantity=requirement.quantity,
-                start_datetime=resource_request.start_datetime,
-                end_datetime=resource_request.end_datetime,
-                excluded_resource_ids=selected_resource_ids
-            )
-
-            # Not enough resources of this type.
-
-            if len(available_resources) < requirement.quantity:
-
-                alternatives = get_alternatives(
-                    event=event,
-                    resource_type=requirement.resource_type,
-                    start_datetime=resource_request.start_datetime,
-                    end_datetime=resource_request.end_datetime,
-                    excluded_resource_ids=selected_resource_ids
-                )
-
-                message = (
-                    f"Not enough active {requirement.resource_type} "
-                    f"resources are available. "
-                    f"Requested: {requirement.quantity}, "
-                    f"Available: {len(available_resources)}."
-                )
-
-                if alternatives:
-                    message += (
-                        f" Suggested alternative: "
-                        f"{alternatives[0].name}."
-                    )
-
-                raise ValueError(message)
-
-            # Keep track of every selected physical resource.
-
-            for resource in available_resources:
-
-                selected_resource_ids.add(
-                    resource.id
-                )
-
-                resources_to_allocate.append(
-                    resource
-                )
-
-        # -------------------------------------------------
-        # ALL requirements are satisfied.
-        # Now create the actual allocations.
-        # -------------------------------------------------
-
-        resource_request.status = "Approved"
-
-        for resource in resources_to_allocate:
-
-            request_item = ResourceRequestItem(
-                request_id=resource_request.id,
-                resource_id=resource.id
-            )
-
-            db.session.add(request_item)
-
-            db.session.flush()
-
-            allocation = Allocation(
-                request_item_id=request_item.id,
-                resource_id=resource.id,
-                start_datetime=resource_request.start_datetime,
-                end_datetime=resource_request.end_datetime,
-                status="Active"
-            )
-
-            db.session.add(allocation)
-
-        resource_request.status = "Allocated"
-
-        db.session.commit()
-
-    except ValueError as exc:
-
-        db.session.rollback()
-
-        flash(
-            str(exc),
-            "error"
-        )
-
-        return redirect(
-            url_for("requests.list_requests")
-        )
-
-    except Exception:
-
-        db.session.rollback()
-
-        flash(
-            "Unable to allocate the resource request.",
-            "error"
-        )
-
-        return redirect(
-            url_for("requests.list_requests")
-        )
-
-    flash(
-        "Resource request approved and resources allocated successfully.",
-        "success"
-    )
-
-    return redirect(
-        url_for("requests.list_requests")
-    )
+    return redirect(url_for("requests.detail_request", request_id=request_id))
 
 
-@requests_bp.route(
-    "/<int:request_id>/reject",
-    methods=["POST"]
-)
+@requests_bp.route("/<int:request_id>/reject", methods=["POST"])
+@admin_required
 def reject_request(request_id):
+    req = db.get_or_404(ResourceRequest, request_id)
+    if req.status != "Pending":
+        flash(f"Cannot reject request with status '{req.status}'.", "error")
+        return redirect(url_for("requests.list_requests"))
 
-    resource_request = db.session.get(
-        ResourceRequest,
-        request_id
-    )
+    reason = request.form.get("rejection_reason", "").strip() or "Rejected by administrator."
+    req.status = "Rejected"
+    req.rejection_reason = reason
+    db.session.commit()
 
-    if resource_request is None:
-
-        flash(
-            "Resource request not found.",
-            "error"
-        )
-
-        return redirect(
-            url_for("requests.list_requests")
-        )
-
-    if resource_request.status != "Pending":
-
-        flash(
-            "Only pending requests can be rejected.",
-            "error"
-        )
-
-        return redirect(
-            url_for("requests.list_requests")
-        )
-
-    resource_request.status = "Rejected"
-
-    try:
-
-        db.session.commit()
-
-    except Exception:
-
-        db.session.rollback()
-
-        flash(
-            "Unable to reject the resource request.",
-            "error"
-        )
-
-        return redirect(
-            url_for("requests.list_requests")
-        )
-
-    flash(
-        "Resource request rejected.",
-        "success"
-    )
-
-    return redirect(
-        url_for("requests.list_requests")
-    )
+    flash("Resource request rejected.", "success")
+    return redirect(url_for("requests.detail_request", request_id=req.id))
 
 
-@requests_bp.route(
-    "/<int:request_id>/cancel",
-    methods=["POST"]
-)
+@requests_bp.route("/<int:request_id>/cancel", methods=["POST"])
+@login_required
 def cancel_request(request_id):
+    req = db.get_or_404(ResourceRequest, request_id)
+    if not current_user.is_admin and req.requester_id and req.requester_id != current_user.id:
+        flash("You do not have permission to cancel this request.", "error")
+        return redirect(url_for("requests.list_requests"))
 
-    resource_request = db.session.get(
-        ResourceRequest,
-        request_id
-    )
+    if req.status == "Cancelled":
+        flash("Request is already cancelled.", "error")
+        return redirect(url_for("requests.list_requests"))
 
-    if resource_request is None:
+    for alloc in req.allocations:
+        alloc.status = "Cancelled"
 
-        flash(
-            "Resource request not found.",
-            "error"
-        )
+    for item in req.items:
+        if item.allocation:
+            item.allocation.status = "Cancelled"
 
-        return redirect(
-            url_for("requests.list_requests")
-        )
+    req.status = "Cancelled"
+    db.session.commit()
 
-    if resource_request.status != "Allocated":
-
-        flash(
-            "Only allocated requests can be cancelled.",
-            "error"
-        )
-
-        return redirect(
-            url_for("requests.list_requests")
-        )
-
-    try:
-
-        # Release all allocations.
-
-        for item in resource_request.items:
-
-            if item.allocation is not None:
-                item.allocation.status = "Cancelled"
-
-        resource_request.status = "Cancelled"
-
-        db.session.commit()
-
-    except Exception:
-
-        db.session.rollback()
-
-        flash(
-            "Unable to cancel the resource request.",
-            "error"
-        )
-
-        return redirect(
-            url_for("requests.list_requests")
-        )
-
-    flash(
-        "Resource request cancelled and resources released.",
-        "success"
-    )
-
-    return redirect(
-        url_for("requests.list_requests")
-    )
+    flash("Resource request cancelled and all bookings released.", "success")
+    return redirect(url_for("requests.detail_request", request_id=req.id))

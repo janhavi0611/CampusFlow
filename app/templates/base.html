@@ -3,31 +3,102 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}CampusFlow{% endblock %}</title>
+  <title>{% block title %}CampusFlow - Event & Resource Allocation System{% endblock %}</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>tailwind.config = { theme: { extend: { colors: { ink: '#172033', brand: '#4f46e5' } } } }</script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: '#2b1a10',
+            cream: '#f6efe3',
+            brand: {
+              50: '#faf3ea',
+              100: '#f0dfc4',
+              200: '#e2c19b',
+              300: '#cf9d6b',
+              400: '#b97c47',
+              500: '#a2632f',
+              600: '#8a4f26',
+              700: '#6f3f1f',
+              800: '#563219',
+              900: '#3f2412'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
 </head>
-<body class="min-h-screen bg-slate-50 text-slate-800">
-  <header class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
-    <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-      <a href="{{ url_for('dashboard.dashboard') }}" class="flex items-center gap-3 font-bold text-ink">
-        <span class="grid h-9 w-9 place-items-center rounded-xl bg-indigo-600 text-lg text-white">C</span>
-        <span>CampusFlow <span class="hidden font-normal text-slate-400 sm:inline">Resource Hub</span></span>
-      </a>
-      <nav class="flex items-center gap-1 text-sm font-medium">
-        <a href="{{ url_for('dashboard.dashboard') }}" class="rounded-lg px-3 py-2 hover:bg-slate-100">Dashboard</a>
-        <a href="{{ url_for('events.list_events') }}" class="rounded-lg px-3 py-2 hover:bg-slate-100">Events</a>
-        <a href="{{ url_for('resources.list_resources') }}" class="rounded-lg px-3 py-2 hover:bg-slate-100">Resources</a>
-        <a href="{{ url_for('requests.list_requests') }}" class="rounded-lg px-3 py-2 hover:bg-slate-100">Requests</a>
-        <a href="{{ url_for('resources.availability') }}" class="hidden rounded-lg px-3 py-2 hover:bg-slate-100 md:block">Availability</a>
-      </nav>
+<body class="min-h-screen bg-cream text-stone-800 flex flex-col justify-between">
+  <div>
+    <!-- Navigation Header -->
+    <header class="sticky top-0 z-30 bg-ink text-cream shadow-md border-b border-brand-800">
+      <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
+        <a href="{{ url_for('dashboard.dashboard') }}" class="flex items-center gap-3 font-bold text-white group">
+          <span class="grid h-10 w-10 place-items-center rounded-xl bg-brand-400 text-xl font-extrabold text-ink shadow-inner transition-transform group-hover:scale-105">C</span>
+          <div class="flex flex-col">
+            <span class="text-base leading-tight font-extrabold tracking-tight">CampusFlow</span>
+            <span class="text-[11px] font-normal text-brand-200 tracking-wide">Event & Resource System</span>
+          </div>
+        </a>
+        <nav class="flex items-center gap-1 text-sm font-medium">
+          {% if current_user and current_user.is_authenticated %}
+          <a href="{{ url_for('dashboard.dashboard') }}" class="rounded-lg px-3 py-2 text-cream/90 hover:bg-white/10 hover:text-white transition">Dashboard</a>
+          <a href="{{ url_for('events.list_events') }}" class="rounded-lg px-3 py-2 text-cream/90 hover:bg-white/10 hover:text-white transition">Events</a>
+          <a href="{{ url_for('resources.list_resources') }}" class="rounded-lg px-3 py-2 text-cream/90 hover:bg-white/10 hover:text-white transition">Resources</a>
+          <a href="{{ url_for('requests.list_requests') }}" class="rounded-lg px-3 py-2 text-cream/90 hover:bg-white/10 hover:text-white transition">Requests</a>
+          <a href="{{ url_for('resources.availability') }}" class="hidden md:inline-block rounded-lg px-3 py-2 text-cream/90 hover:bg-white/10 hover:text-white transition">Availability</a>
+
+          <div class="ml-3 hidden sm:flex items-center gap-3 border-l border-white/15 pl-4">
+            <div class="flex flex-col text-right">
+              <span class="text-xs font-semibold text-white">{{ current_user.name }}</span>
+              <span class="text-[10px] font-medium uppercase tracking-wider text-brand-300">{% if current_user.is_admin %}Admin{% else %}Organizer{% endif %}</span>
+            </div>
+            <a href="{{ url_for('auth.logout') }}" class="rounded-lg bg-brand-700/60 px-3 py-1.5 text-xs font-semibold text-brand-100 hover:bg-brand-600 transition border border-brand-500/30">Log out</a>
+          </div>
+          {% else %}
+          <a href="{{ url_for('auth.login') }}" class="rounded-lg bg-brand-400 px-4 py-2 font-semibold text-ink shadow hover:bg-brand-300 transition">Log in</a>
+          {% endif %}
+        </nav>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="mb-6 space-y-3">
+          {% for category, message in messages %}
+          <div class="flex items-start gap-3 rounded-xl border px-4 py-3.5 text-sm shadow-sm transition {% if category == 'success' %}border-emerald-300/60 bg-emerald-50/90 text-emerald-900{% else %}border-rose-300/60 bg-rose-50/90 text-rose-900{% endif %}">
+            <span class="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-xs font-bold {% if category == 'success' %}bg-emerald-200 text-emerald-800{% else %}bg-rose-200 text-rose-800{% endif %}">
+              {% if category == 'success' %}✓{% else %}!{% endif %}
+            </span>
+            <div class="flex-1 font-medium leading-relaxed">{{ message }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="mt-12 border-t border-brand-200/60 bg-brand-50/60 py-6 text-center text-xs text-stone-500">
+    <div class="mx-auto max-w-7xl px-4">
+      <p class="font-medium text-stone-600">CampusFlow &middot; College Event & Resource Allocation System</p>
+      <p class="mt-1 text-[11px] text-stone-400">Powered by Flask & SQLAlchemy &middot; Designed with Warm Brown Palette</p>
     </div>
-  </header>
-  <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}<div class="mb-6 space-y-2">{% for category, message in messages %}<div class="rounded-xl border px-4 py-3 text-sm {% if category == 'success' %}border-emerald-200 bg-emerald-50 text-emerald-800{% else %}border-rose-200 bg-rose-50 text-rose-800{% endif %}">{{ message }}</div>{% endfor %}</div>{% endif %}
-    {% endwith %}
-    {% block content %}{% endblock %}
-  </main>
+  </footer>
+
+  {% block scripts %}{% endblock %}
 </body>
 </html>
