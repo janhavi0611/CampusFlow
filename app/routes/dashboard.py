@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template
+from flask import Blueprint, abort, flash, redirect, render_template, url_for
 from flask_login import current_user, login_required
 
 from app.models import Allocation, Event, Resource, ResourceRequest
@@ -47,3 +47,18 @@ def dashboard():
         pending_request_list=pending_request_list,
         recent_allocations=recent_allocations,
     )
+
+
+@dashboard_bp.route("/seed-demo", methods=["GET", "POST"])
+@login_required
+def seed_demo():
+    if not current_user.is_admin:
+        abort(403)
+
+    from app.utils.seed_data import seed_demo_data
+    stats = seed_demo_data(drop_existing=False)
+    flash(
+        f"Demo data successfully loaded! ({stats['resources']} resources, {stats['events']} events, {stats['requests']} requests)",
+        "success",
+    )
+    return redirect(url_for("dashboard.dashboard"))

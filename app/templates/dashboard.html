@@ -25,9 +25,28 @@
       <a href="{{ url_for('resources.create_resource') }}" class="rounded-xl bg-brand-600 px-4 py-2.5 text-xs font-bold text-white shadow hover:bg-brand-500 transition">
         + Add Resource
       </a>
+      {% if total_resources == 0 %}
+      <a href="{{ url_for('dashboard.seed_demo') }}" class="rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-bold text-white shadow hover:bg-amber-400 transition flex items-center gap-1">
+        ⚡ Load Demo Data
+      </a>
+      {% endif %}
       {% endif %}
     </div>
   </div>
+
+  {% if total_resources == 0 and total_events == 0 %}
+  <div class="rounded-2xl border border-amber-300/80 bg-amber-50 p-5 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <div>
+      <h3 class="font-bold text-sm">Demo Data Not Loaded Yet</h3>
+      <p class="text-xs text-amber-800 mt-0.5">The database currently has no sample events, resources, or requests.</p>
+    </div>
+    {% if current_user.is_admin %}
+    <a href="{{ url_for('dashboard.seed_demo') }}" class="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white shadow hover:bg-amber-700 transition shrink-0">
+      ⚡ Load Demo Data
+    </a>
+    {% endif %}
+  </div>
+  {% endif %}
 
   <!-- Metric Stat Cards -->
   <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
