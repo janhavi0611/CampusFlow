@@ -1,973 +1,338 @@
-# CampusFlow — College Event Resource Allocation System
+# 🎓 CampusFlow — College Event Resource Allocation System
 
-> A Flask-based web application for managing college events, shared resources, resource requests, availability, and resource allocation through a centralized platform.
+CampusFlow is a Flask web application for planning university events and reserving shared campus facilities and equipment. It brings event organizers and administrators into one workflow for requesting, reviewing, allocating, and tracking resources such as auditoriums, laboratories, projectors, microphones, cameras, and computers.
 
-CampusFlow helps colleges and universities manage events and shared physical resources such as auditoriums, laboratories, projectors, microphones, cameras, and other equipment.
+The application uses role-based access control, an hourly availability view, time-overlap checks, capacity-aware venue selection, and an all-or-nothing allocation process to help prevent double-booking and incomplete reservations.
 
-The system provides separate Admin and Organizer roles, resource availability checking, conflict detection, alternative resource suggestions, and an approval-based allocation workflow.
+| Link | Destination |
+| --- | --- |
+| GitHub repository | [janhavi0611/college-event-resource-system](https://github.com/janhavi0611/college-event-resource-system) |
+| Live demo | [college-event-resource-system.onrender.com](https://college-event-resource-system.onrender.com/) |
 
----
-
-## 🚀 Live Demo
-
-**Hosted Application:**
-
-https://college-event-resource-system.onrender.com
-
-> The application is deployed on Render. Since it uses a free deployment instance, the first request after inactivity may take some time to load.
+> The live demo is hosted on Render. A free instance may take a short time to wake after inactivity.
 
 ---
 
-# ✨ Features
+## What CampusFlow Provides
 
-## 1. Event Management
+| Capability | Description |
+| --- | --- |
+| Event workspace | Create, view, edit, and track events with dates, attendance, descriptions, and lifecycle status. |
+| Resource catalogue | Maintain named campus resources across six supported categories and activate or deactivate them when needed. |
+| Flexible requests | Request particular resources, quantity-based resource requirements, or both for an event time window. |
+| Admin review | Administrators allocate pending requests atomically or reject them with a recorded reason. |
+| Availability planner | See an active resource's schedule in hourly slots from 08:00 to 20:00. |
+| Collision protection | Reject allocations that overlap an active reservation for the same resource. |
+| Smart fallback | Offer a suitable available resource when a selected one is inactive, too small, or already booked. |
+| Ownership protection | Organizers are limited to their own events and requests; administrators have system-wide access. |
+| Automated checks | A `pytest` suite covers authentication, events, requests, availability, alternatives, conflicts, allocation, and role flow. |
 
-Organizers can create and manage college events.
+---
 
-### Features
+## Application Flow
 
-- Create events
-- View events
-- Edit events
-- Cancel events
-- Event date and time management
-- Expected attendance tracking
-- Event status management
-- Event validation
-- Event ownership checks
-
-Each event contains information such as:
-
-- Event name
-- Organizer
-- Expected attendance
-- Start date and time
-- End date and time
-- Status
-
-### Event Lifecycle
+CampusFlow follows a review-based reservation process:
 
 ```text
-Draft
-  ↓
-Pending
-  ↓
-Approved
-  ↓
-Completed
-```
-
-Events may also be rejected or cancelled depending on their current state.
-
----
-
-# 2. Resource Management
-
-Administrators can manage the resources available on campus.
-
-Examples include:
-
-- Auditoriums
-- Seminar halls
-- Laboratories
-- Projectors
-- Microphones
-- Cameras
-- Computers
-- Other shared equipment
-
-### Admin Resource Operations
-
-Admins can:
-
-- Add resources
-- Edit resources
-- View resources
-- Activate resources
-- Deactivate resources
-- Check resource availability
-
-Inactive resources are not considered for new allocations.
-
----
-
-# 3. Resource Requests
-
-Organizers can request one or more resources for an event.
-
-A request can contain multiple resource requirements.
-
-Example:
-
-```
-Annual Technical Symposium
-
-Auditorium × 1
-Projector × 2
-Microphone × 3
-```
-
-The system validates the request before it is submitted.
-
-### Request Workflow
-
-```
-Organizer
-    ↓
-Select Event
-    ↓
-Select Resource Requirements
-    ↓
-Submit Request
-    ↓
-Pending
-    ↓
-Admin Review
-    ↓
-Approve / Reject
-    ↓
-Resource Allocation
-```
-
----
-
-# 4. Resource Availability
-
-CampusFlow provides a resource availability checker.
-
-Users can check whether resources are available for a particular time period before making or approving a request.
-
-The availability system considers:
-
-- Resource status
-- Existing allocations
-- Requested date
-- Requested start time
-- Requested end time
-- Resource quantity
-- Existing bookings
-
-This helps reduce scheduling conflicts and double-booking.
-
----
-
-# 5. Conflict Detection
-
-The system prevents resources from being allocated to overlapping events.
-
-Two time intervals are considered conflicting when:
-
-```
-existing.start < requested.end
-AND
-existing.end > requested.start
-```
-
-### Example
-
-```
-Existing Booking
-10:00 AM ───────────── 2:00 PM
-
-New Request
-12:00 PM ───────────── 4:00 PM
-
-Result: ❌ Conflict
-```
-
-However, back-to-back bookings are allowed:
-
-```
-Existing Booking
-10:00 AM ───────────── 2:00 PM
-
-New Request
-                    2:00 PM ───────── 4:00 PM
-
-Result: ✅ Allowed
-```
-
-This interval-based approach prevents double-booking while still allowing resources to be used immediately after a previous booking ends.
-
----
-
-# 6. Alternative Resource Suggestions
-
-If a requested resource is unavailable, the system can identify suitable alternatives.
-
-Alternative selection considers:
-
-1. Resource type
-2. Active status
-3. Capacity requirements
-4. Requested quantity
-5. Time availability
-6. Suitability for the event
-
-For capacity-based resources, suitable alternatives can be ranked according to capacity.
-
-### Example
-
-```
-Expected Attendance: 150
-
-Requested:
-Auditorium A
-Capacity: 100
-Status: Unavailable
-
-Possible Alternative:
-Auditorium B
-Capacity: 200
-Status: Available
-```
-
-The system can therefore suggest a suitable available resource instead of simply rejecting the request.
-
----
-
-# 7. Approval & Allocation Workflow
-
-Administrators are responsible for reviewing resource requests.
-
-A request begins in the:
-
-```
-Pending
-```
-
-state.
-
-The administrator can then:
-
-```
-Approve
-   OR
-Reject
-```
-
-If approved, the resources can be allocated.
-
-### Allocation Workflow
-
-```
-Pending Request
-      ↓
-Admin Review
-      ↓
-Approve
-      ↓
-Check Availability
-      ↓
-Allocate Resources
-      ↓
-Allocated
-```
-
-If the administrator rejects the request:
-
-```
-Pending
-   ↓
-Rejected
-```
-
----
-
-# 8. Atomic Resource Allocation
-
-Resource allocation follows an all-or-nothing approach.
-
-For example, if a request requires:
-
-```
-Auditorium × 1
-Projector × 2
-Microphone × 2
-```
-
-and one of the required resources cannot be allocated, the system avoids leaving the request partially allocated.
-
-Conceptually:
-
-```
-Check all requested resources
+Organizer creates an event
           ↓
-   ┌──────┴──────┐
-   ↓             ↓
-All available   One unavailable
-   ↓             ↓
-Allocate all    Allocate none
+Organizer submits a resource request
+          ↓
+Administrator reviews the pending request
+          ↓
+Availability, capacity, and conflicts are checked again
+          ↓
+Allocated in full  ─── or ───  Rejected with a reason and possible alternatives
 ```
 
-This keeps the database state consistent and prevents partially fulfilled requests.
+An event records its own schedule and status independently from a resource request. Resource-request times must fall within the selected event's start and end times.
+
+### Event status progression
+
+```text
+Draft → Submitted → Approved → Completed
+  └──────────────→ Cancelled
+Submitted ───────→ Draft
+Approved ────────→ Cancelled
+```
+
+The application only permits the status transitions defined by the event model.
+
+### Resource-request statuses
+
+| Status | Meaning |
+| --- | --- |
+| `Pending` | Submitted and awaiting an administrator's decision. |
+| `Allocated` | Every required resource passed validation and has been reserved. |
+| `Rejected` | Allocation could not be completed, or an administrator declined it. |
+| `Cancelled` | The request was cancelled and any associated allocations were released. |
 
 ---
 
-# 9. Approval-Time Validation
+## Resource Safeguards
 
-Resource availability can change between the time a request is submitted and the time an administrator approves it.
+### Preventing booking clashes
 
-Therefore, the system performs availability validation during the allocation process as well.
+An existing allocation conflicts with a requested interval when both conditions are true:
 
-Example:
-
+```text
+existing_start < requested_end
+AND
+existing_end > requested_start
 ```
-Organizer submits request
+
+This correctly catches partial, complete, contained, and enclosing overlaps. Reservations that meet exactly at a boundary are allowed, so a booking ending at 14:00 does not block another booking beginning at 14:00.
+
+Cancelled allocations are excluded from conflict checks, which makes their resources available again.
+
+### Allocation
+
+An administrator's approval runs through one allocation service. It validates the request's status and timing, checks the requested resources or quantities, verifies active status, confirms venue capacity where applicable, and looks for time conflicts.
+
+```text
+Validate every required resource
         ↓
-Resource is available
+All checks pass? ── Yes → create all allocations → mark request Allocated
+        │
+        No
         ↓
-Another request gets allocated
-        ↓
-Admin reviews original request
-        ↓
-Availability checked again
-        ↓
-Conflict detected if necessary
+create no partial allocation → mark request Rejected → store reason
 ```
 
-This prevents stale availability information from resulting in invalid allocations.
+The database transaction is rolled back on any failed validation, preventing a request from being only partly fulfilled.
+
+### Choosing an alternative
+
+When the requested resource cannot be used, CampusFlow searches active resources of the same type that are free during the requested window. For auditoriums and laboratories, the alternative must also accommodate the event's expected attendance.
+
+Venue candidates are ordered by the smallest sufficient capacity, then by name; equipment candidates are ordered by name. This favors a suitable venue without unnecessarily occupying a larger one.
 
 ---
 
-# 👥 Role-Based Access Control
+## Roles and Permissions
 
-CampusFlow supports two main roles:
+Authentication is handled by Flask-Login, with user records stored in the database and passwords stored as hashes.
 
-- Admin
-- Organizer
+| Action | Administrator | Organizer |
+| --- | :---: | :---: |
+| Sign in and view dashboard | ✓ | ✓ |
+| Create events | ✓ | ✓ |
+| View events | All | Own events |
+| Edit or cancel events | All | Own events |
+| Submit resource requests | ✓ | Own events only |
+| View requests | All | Own requests |
+| Cancel requests | ✓ | Own requests |
+| View availability | ✓ | ✓ |
+| Add or edit resources | ✓ | — |
+| Activate or deactivate resources | ✓ | — |
+| Approve and allocate requests | ✓ | — |
+| Reject requests and add a reason | ✓ | — |
 
-Authorization is enforced on the backend.
-
-## Admin
-
-Administrators can:
-
-- Access the dashboard
-- Manage resources
-- Create resources
-- Edit resources
-- Activate/deactivate resources
-- View resource availability
-- View submitted resource requests
-- Approve resource requests
-- Reject resource requests
-- Allocate resources
-- Cancel allocations
-- Manage system-level operations
-
-## Organizer
-
-Organizers can:
-
-- Access the dashboard
-- Create events
-- View events
-- Edit permitted events
-- Cancel permitted events
-- Submit resource requests
-- View their resource requests
-- Check resource availability
-
-Organizers cannot:
-
-- Manage resources
-- Approve resource requests
-- Reject resource requests
-- Allocate resources
-- Perform administrator-only operations
-
-### Permission Overview
-
-OperationAdminOrganizerView Dashboard✅✅Create Event✅✅View Events✅✅Edit Events✅✅Cancel Events✅✅Manage Resources✅❌Activate/Deactivate Resources✅❌Check Availability✅✅Create Resource Request✅✅View Resource Requests✅Own RequestsApprove Requests✅❌Reject Requests✅❌Allocate Resources✅❌Cancel Allocation✅❌
+Backend checks enforce the administrator role and event/request ownership; restrictions are not only a user-interface convention.
 
 ---
 
-# 📊 Dashboard
+## Technology
 
-The dashboard provides a centralized overview of college operations.
-
-It displays information such as:
-
-- Total events
-- Active resources
-- Pending approvals
-- Upcoming events
-- Allocated requests
-- Rejected requests
-- Cancelled requests
-- Inactive resources
-
-The dashboard also provides quick access to:
-
-- Creating events
-- Requesting resources
-- Viewing events
-- Viewing resources
-- Viewing requests
-- Checking resource availability
+| Area | Tools used |
+| --- | --- |
+| Language | Python |
+| Web framework | Flask 3.1.3 |
+| Data layer | SQLAlchemy with Flask-SQLAlchemy |
+| Database migrations | Flask-Migrate / Alembic |
+| Authentication | Flask-Login |
+| Password security | Werkzeug password hashing |
+| Templates | Jinja2 |
+| Local database default | SQLite (`instance/app.db`) |
+| Testing | pytest |
+| Production server | Gunicorn |
+| Hosted demo | Render |
 
 ---
 
-# 🧪 Testing
+## Project Layout
 
-The project includes automated tests using `pytest`.
-
-Run the complete test suite with:
-
-```
-pytest tests/ -v
-```
-
-The tests are designed to verify important application workflows and business rules.
-
-### Testing Areas
-
-AreaPurposeAuthorizationAuthentication and role-based accessEventsEvent creation and validationResourcesResource managementRequestsResource request validationConflictsDouble-booking preventionAlternativesAlternative resource selectionAllocationResource allocation and cancellationRole WorkflowAdmin and Organizer workflows
-
-Testing helps ensure that changes to the application do not break existing functionality.
-
----
-
-# 🛠️ Technology Stack
-
-LayerTechnologyPurposeBackendPythonApplication developmentWeb FrameworkFlaskRouting and application logicORMSQLAlchemyDatabase interactionDatabaseSQLiteLocal/demo databaseAuthenticationFlask-LoginUser authenticationPassword HashingWerkzeugSecure password storageMigrationsFlask-Migrate / AlembicDatabase schema migrationsTemplatesJinja2Dynamic HTML renderingStylingTailwind CSSResponsive user interfaceJavaScriptVanilla JavaScriptClient-side interactionsTestingpytestAutomated testingServerGunicornProduction WSGI serverDeploymentRenderCloud deployment
-
----
-
-# 🏗️ Project Structure
-
-```
+```text
 college-event-resource-system/
-│
 ├── app/
-│   ├── __init__.py
-│   ├── constants.py
-│   ├── extensions.py
-│   │
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── event.py
-│   │   ├── resource.py
-│   │   ├── resource_request.py
-│   │   └── user.py
-│   │
-│   ├── routes/
-│   │   ├── __init__.py
-│   │   ├── dashboard.py
-│   │   ├── events.py
-│   │   ├── resources.py
-│   │   └── requests.py
-│   │
-│   └── templates/
-│       ├── auth/
-│       ├── events/
-│       ├── resources/
-│       ├── requests/
-│       ├── dashboard.html
-│       └── base.html
-│
-├── migrations/
-│   ├── versions/
-│   ├── alembic.ini
-│   ├── env.py
-│   └── script.py.mako
-│
-├── tests/
-│
-├── instance/
-│
-├── requirements.txt
-├── run.py
-├── seed.py
-├── init_db.py
-├── .env.example
-└── README.md
+│   ├── models/                 # User, event, resource, request, and allocation models
+│   ├── routes/                 # Authentication, dashboard, event, resource, and request routes
+│   ├── templates/              # Jinja templates, including error pages
+│   ├── utils/auth.py           # Role and ownership helpers
+│   ├── services.py             # Conflict, availability, alternative, and allocation logic
+│   ├── extensions.py           # Database and migration extensions
+│   └── __init__.py             # Flask application factory
+├── migrations/                 # Alembic migration history
+├── tests/                      # Automated pytest test suite
+├── .env.example                # Environment-variable template
+├── init_db.py                  # Database initialization helper
+├── seed.py                     # Fresh demo-data setup
+├── requirements.txt            # Python dependencies
+└── run.py                      # Local application entry point
 ```
+
+### Architecture at a glance
+
+```text
+Browser → Flask routes → services → SQLAlchemy models → SQLite / configured database
+                    ↓
+              Jinja templates
+```
+
+Routes coordinate HTTP requests and authorization. The service layer keeps core allocation behavior—such as overlap detection and alternative selection—separate from route handlers. Models represent the persistent data and relationships.
 
 ---
 
-# 💻 Installation & Running Locally
+## Run Locally
 
-## Prerequisites
+### Before you begin
 
-Make sure the following are installed:
+- Python 3.10 or later
+- `pip`
+- Git (if cloning the repository)
 
-- Python 3.10+
-- Git
-- pip
+### 1. Get the code
 
----
-
-## 1. Clone the Repository
-
-```
+```bash
 git clone https://github.com/janhavi0611/college-event-resource-system.git
 cd college-event-resource-system
 ```
 
----
+### 2. Create and activate a virtual environment
 
-## 2. Create a Virtual Environment
+**Windows PowerShell**
 
-### Windows
-
-```
+```powershell
 python -m venv venv
-```
-
-Activate it:
-
-```
 .\venv\Scripts\Activate.ps1
 ```
 
-### macOS / Linux
+**macOS / Linux**
 
-```
+```bash
 python3 -m venv venv
 source venv/bin/activate
 ```
 
----
+### 3. Install dependencies
 
-## 3. Install Dependencies
-
-```
+```bash
 pip install -r requirements.txt
 ```
 
----
+### 4. Add local configuration
 
-## 4. Configure Environment Variables
+Copy `.env.example` to a new file named `.env`, then replace the placeholder with a long, random secret:
 
-Create a `.env` file based on `.env.example`.
-
-Example:
-
+```env
+SECRET_KEY=replace-with-a-long-random-secret-key
 ```
-SECRET_KEY=your-secret-key
+
+The default local database location is `instance/app.db`. To use a different database, set `DATABASE_URL` in `.env`, for example:
+
+```env
 DATABASE_URL=sqlite:///app.db
 ```
 
-For local development, use a secure random secret key.
+Keep `.env` private; it is already excluded by `.gitignore`.
 
-You can generate one with:
+### 5. Create the database
 
-```
-python -c "import secrets; print(secrets.token_hex(32))"
-```
+Apply the tracked schema migrations:
 
-Do not commit the `.env` file to GitHub.
-
----
-
-# 🗄️ Database Setup
-
-The project uses Flask-Migrate and Alembic for database migrations.
-
-Apply the existing migrations using:
-
-```
+```bash
 flask db upgrade
 ```
 
-This creates/updates the database schema based on the migration files.
+### 6. Add sample data (optional)
 
-If you are working with a fresh local database, make sure the database is initialized before starting the application.
-
----
-
-# 🌱 Database Seeding
-
-The project includes database seeding functionality for creating initial/demo data.
-
-Depending on the current configuration, the database can be initialized using:
-
-```
+```bash
 python seed.py
 ```
 
-This can be used to populate the application with sample users, events, and resources for testing/demo purposes.
+> **Caution:** `seed.py` drops and recreates all tables before adding demo users, resources, events, requests, and an example allocation. Use it only for a fresh local demo database, never for data you need to keep.
 
----
+### 7. Start the application
 
-# ▶️ Running the Application
-
-Start the Flask development server:
-
-```
+```bash
 python run.py
 ```
 
-The application will be available at:
+Open [http://127.0.0.1:5000](http://127.0.0.1:5000) in your browser.
 
-```
-http://127.0.0.1:5000
-```
-
-Open the URL in your browser.
+To enable Flask debugging locally, set `FLASK_DEBUG=true` in `.env` before starting the app.
 
 ---
 
-# 🔄 Complete System Workflow
+## Demo Accounts
 
-The complete CampusFlow workflow can be represented as:
+After running `python seed.py`, use any of the following accounts:
 
-```
-                    ┌───────────────┐
-                    │     Login     │
-                    └───────┬───────┘
-                            │
-                 ┌──────────┴──────────┐
-                 ↓                     ↓
-            Organizer                 Admin
-                 │                     │
-                 ↓                     ↓
-          Create Event          Manage Resources
-                 │                     │
-                 ↓                     ↓
-        Request Resources       Check Availability
-                 │                     │
-                 ↓                     │
-              Pending ←────────────────┘
-                 │
-                 ↓
-            Admin Review
-                 │
-          ┌──────┴──────┐
-          ↓             ↓
-       Reject        Approve
-          │             │
-          ↓             ↓
-      Rejected     Availability Check
-                        │
-                        ↓
-                  Allocate Resources
-                        │
-                        ↓
-                    Allocated
-```
+| Role | Username | Password | Sample user |
+| --- | --- | --- | --- |
+| Administrator | `admin` | `admin123` | Administrator |
+| Organizer | `organizer` | `org123` | Sarah Jenkins |
+| Organizer | `organizer2` | `org123` | David Chen |
+
+These accounts exist solely for local demonstration. Change or remove them in a real deployment.
 
 ---
 
-# 📐 Conflict Detection Logic
+## Database 
 
-Resource conflicts are detected using interval overlap.
+CampusFlow models the following core records:
 
-For two bookings:
+| Record | Purpose |
+| --- | --- |
+| `User` | Stores account identity, role, and password hash. |
+| `Event` | Stores event details, owner, time range, attendance, and lifecycle state. |
+| `Resource` | Stores a named facility or item, its category, optional capacity, and active flag. |
+| `ResourceRequest` | Connects an event and requester to a requested time range and review status. |
+| `ResourceRequestItem` | Represents a particular selected resource. |
+| `ResourceRequirement` | Represents a category-and-quantity need, such as two projectors. |
+| `Allocation` | Represents the final resource booking and its status. |
 
-```
-A = [A_start, A_end)
-B = [B_start, B_end)
-```
-
-A conflict exists when:
-
-```
-A_start < B_end
-AND
-B_start < A_end
-```
-
-### Examples
-
-Existing BookingNew BookingResult10:00–14:0012:00–16:00❌ Conflict10:00–14:0014:00–16:00✅ Allowed10:00–14:0008:00–10:00✅ Allowed10:00–14:0009:00–15:00❌ Conflict10:00–14:0011:00–12:00❌ Conflict
-
-Using strict `<` comparisons means that bookings that meet exactly at the boundary are allowed.
+The migration files in `migrations/` are the source of truth for evolving an existing database schema. For a normal update, use `flask db upgrade` rather than deleting a working database.
 
 ---
 
-# 📦 Resource Allocation Model
+## Quality Checks
 
-The system separates resource requests from actual allocations.
+Run the complete test suite from the project root:
 
-A resource request represents what an organizer wants:
-
-```
-Resource Request
-    ↓
-Requested Resource Requirements
+```bash
+pytest -q
 ```
 
-Actual physical resources are committed during the allocation stage:
+For more detailed test names and output:
 
-```
-Resource Request
-       ↓
-Admin Approval
-       ↓
-Allocation
-       ↓
-Physical Resource
+```bash
+pytest tests/ -v
 ```
 
-This separation allows the system to validate availability before resources are actually committed.
+| Test focus | What is verified |
+| --- | --- |
+| Authentication and authorization | Login behavior and administrator-only route protection. |
+| Events | Permitted event status transitions. |
+| Resources | Resource creation, activation, and hourly availability generation. |
+| Requests | Request persistence and selected-resource relationships. |
+| Conflict detection | Overlaps, back-to-back bookings, and cancelled allocations. |
+| Alternative selection | Capacity-aware fallback resource selection. |
+| Atomic allocation | Successful allocation and no partial allocation after a conflict. |
+| Role workflow | An organizer-to-allocation end-to-end scenario. |
+
+Tests use an in-memory SQLite database, so they do not need or alter the local demo database.
 
 ---
 
-# 🗃️ Database & Migrations
 
-The application uses SQLAlchemy models and Flask-Migrate/Alembic.
-
-The migration files are stored under:
-
-```
-migrations/versions/
-```
-
-Common commands:
-
-### Create a migration
-
-```
-flask db migrate -m "describe your change"
-```
-
-### Apply migrations
-
-```
-flask db upgrade
-```
-
-### Roll back a migration
-
-```
-flask db downgrade
-```
-
-Database migrations should be used when modifying database models instead of manually changing the database schema.
-
----
-
-# 🚀 Deployment
-
-The application is deployed on Render as a Python Web Service.
-
-### Build Command
-
-```
-pip install -r requirements.txt
-```
-
-### Start Command
-
-```
-gunicorn run:app
-```
-
-### Environment Variables
-
-Configure the required environment variables in the Render dashboard.
-
-Example:
-
-```
-SECRET_KEY=<secure-random-secret>
-DATABASE_URL=<database-url>
-```
-
-Never commit production secrets to the GitHub repository.
-
----
-
-# ⚠️ SQLite Deployment Note
-
-SQLite is used for local development and the current demonstration deployment.
-
-SQLite is convenient and lightweight, but it is not ideal for a high-concurrency production application.
-
-For a production-scale deployment, PostgreSQL or another persistent relational database would be recommended.
-
-```
-Development
-    ↓
-SQLite
-
-Demo / Internship Deployment
-    ↓
-SQLite
-
-Production Scale
-    ↓
-PostgreSQL
-```
-
----
-
-# 🔐 Security
-
-The application includes:
-
-- Authentication
-- Password hashing
-- Session management
-- Role-based authorization
-- Server-side permission checks
-- Organizer ownership checks
-- Resource availability validation
-- Conflict detection
-- Protected administrative routes
-
-Authorization is enforced on the backend and is not dependent only on hiding frontend buttons.
-
----
-
-# 📌 Important Business Rules
-
-### Event Validation
-
-An event must have a valid start and end time.
-
-```
-start_datetime < end_datetime
-```
-
-### Resource Request Validation
-
-Requested resources must be valid and compatible with the event.
-
-### Availability
-
-A resource cannot be allocated to overlapping active bookings.
-
-### Back-to-Back Bookings
-
-Bookings ending exactly when another booking begins are allowed.
-
-### Inactive Resources
-
-Inactive resources cannot be newly allocated.
-
-### Authorization
-
-Admin-only operations cannot be performed by organizers.
-
-### Allocation
-
-Resource allocation is handled as an all-or-nothing operation to prevent partial allocation states.
-
----
-
-# 📈 Future Improvements
-
-Potential future improvements include:
-
-- PostgreSQL production database
-- Email notifications
-- Calendar integration
-- Advanced resource search
-- Pagination
-- Audit logs
-- Resource usage analytics
-- Exportable reports
-- Password reset functionality
-- CSRF protection
-- Timezone-aware scheduling
-- REST API
-- Docker support
-- Automated CI/CD improvements
-
----
-
-# 🧩 Architecture
-
-```
-                    Browser
-                       │
-                       ↓
-                Flask Application
-                       │
-          ┌────────────┼────────────┐
-          ↓            ↓            ↓
-     Authentication   Routes      Templates
-          │            │            │
-          └────────────┼────────────┘
-                       ↓
-                Business Logic
-                       │
-          ┌────────────┼────────────┐
-          ↓            ↓            ↓
-      Availability   Conflict    Allocation
-       Checking     Detection     Engine
-          │            │            │
-          └────────────┼────────────┘
-                       ↓
-                 SQLAlchemy ORM
-                       │
-                       ↓
-                    SQLite
-```
-
----
-
-# 📊 Main Entities
-
-The system is built around the following major entities:
-
-```
-User
-  │
-  ├── Organizer
-  └── Admin
-
-Event
-  │
-  └── Resource Request
-          │
-          ├── Resource Requirements
-          │
-          └── Allocations
-
-Resource
-```
-
-These entities work together to represent the complete event resource management workflow.
-
----
-
-# 🧪 Development Workflow
-
-A typical development workflow is:
-
-```
-1. Modify application code
-        ↓
-2. Update database models if required
-        ↓
-3. Create migration
-        ↓
-4. Apply migration
-        ↓
-5. Run application
-        ↓
-6. Test functionality
-        ↓
-7. Run automated tests
-        ↓
-8. Commit changes
-        ↓
-9. Push to GitHub
-        ↓
-10. Render deploys latest version
-```
-
----
-
-# 📁 Repository
-
-GitHub:
-
-[https://github.com/janhavi0611/college-event-resource-system](https://github.com/janhavi0611/college-event-resource-system)
-
-Live Application:
-
-[https://college-event-resource-system.onrender.com](https://college-event-resource-system.onrender.com)
-
----
-
-# 👩‍💻 Author
+## Author
 
 **Janhavi**
 
-College Event Resource Allocation System developed as an internship/project assignment.
+- GitHub: [janhavi0611](https://github.com/janhavi0611)
+- Project repository: [college-event-resource-system](https://github.com/janhavi0611/college-event-resource-system)
+
+---
+
+CampusFlow was built as a college event and shared-resource management project.
